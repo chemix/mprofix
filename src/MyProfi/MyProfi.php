@@ -74,6 +74,13 @@ class MyProfi
     protected $sample = false;
 
     /**
+     * Will the output be dynamic HTML with JavaScript filtering
+     *
+     * @var boolean
+     */
+    protected $dynamic = false;
+
+    /**
      * Field name to sort by
      *
      * @var boolean
@@ -90,8 +97,12 @@ class MyProfi
     protected $_types = [];
     protected $_samples = [];
     protected $_stats = [];
+    protected $_patternStatsIndex = 0;
+    protected $_executions = [];
 
     protected $total = 0;
+
+    protected ?Writer\SqliteWriter $sqliteWriter = null;
 
     /**
      * Set the object that can fetch queries one by one from
@@ -156,6 +167,22 @@ class MyProfi
     }
 
     /**
+     * Set/get dynamic mode for interactive HTML output
+     *
+     * @param boolean|null $dynamic
+     *
+     * @return boolean
+     */
+    public function dynamic($dynamic = null)
+    {
+        if (null === $dynamic) {
+            return $this->dynamic;
+        }
+
+        return $this->dynamic = $dynamic;
+    }
+
+    /**
      * Keep one sample query for each pattern
      *
      * @param boolean $sample
@@ -185,6 +212,24 @@ class MyProfi
     public function sortby($sort)
     {
         $this->sort = $sort;
+    }
+
+    /**
+     * Set SQLite writer for exporting query executions
+     */
+    public function setSqliteWriter(Writer\SqliteWriter $writer): void
+    {
+        $this->sqliteWriter = $writer;
+    }
+
+    /**
+     * Finalize SQLite writer (commit remaining transactions)
+     */
+    public function finalizeSqliteWriter(): void
+    {
+        if ($this->sqliteWriter !== null) {
+            $this->sqliteWriter->finalize();
+        }
     }
 
     /**
@@ -220,12 +265,34 @@ class MyProfi
         $ex = $this->fetcher;
 
         // group queries by type and pattern
-        while (($line = $ex->getQuery())) {
+        while (($data = $ex->getQuery())) {
             $stat = false;
+            $context = [];
 
-            if (is_array($line)) {
-                $stat = $line;
-                $line = array_pop($stat); // extract statement, it's always the last element of array
+            if (is_array($data)) {
+                // New format with named keys (from SlowExtractor)
+                if (isset($data['sql'])) {
+                    $line = $data['sql'];
+                    // Extract stat keys (qt, lt, rs, re)
+                    $stat = [];
+                    foreach (['qt', 'lt', 'rs', 're'] as $key) {
+                        if (isset($data[$key])) {
+                            $stat[$key] = $data[$key];
+                        }
+                    }
+                    // Extract context keys (thread_id, user, host, timestamp, schema)
+                    foreach (['thread_id', 'user', 'host', 'timestamp', 'schema'] as $key) {
+                        if (isset($data[$key])) {
+                            $context[$key] = $data[$key];
+                        }
+                    }
+                } else {
+                    // Legacy format: stats + statement as last element
+                    $stat = $data;
+                    $line = array_pop($stat);
+                }
+            } else {
+                $line = $data;
             }
 
             // keep query sample
@@ -284,6 +351,41 @@ class MyProfi
                         ];
                     }
                 }
+            }
+
+            // Store individual executions for dynamic mode
+            if ($this->dynamic && $this->slow) {
+                $this->_executions[] = [
+                    'hash' => $hash,
+                    'pattern' => $line,
+                    'thread_id' => $context['thread_id'] ?? null,
+                    'user' => $context['user'] ?? null,
+                    'host' => $context['host'] ?? null,
+                    'timestamp' => $context['timestamp'] ?? null,
+                    'schema' => $context['schema'] ?? null,
+                    'qt' => $stat['qt'] ?? 0,
+                    'lt' => $stat['lt'] ?? 0,
+                    'rs' => $stat['rs'] ?? 0,
+                    're' => $stat['re'] ?? 0,
+                ];
+            }
+
+            // Write to SQLite if writer is set
+            if ($this->sqliteWriter !== null) {
+                $this->sqliteWriter->writeExecution([
+                    'hash' => $hash,
+                    'pattern' => $line,
+                    'sql' => $smpl,
+                    'thread_id' => $context['thread_id'] ?? null,
+                    'user' => $context['user'] ?? null,
+                    'host' => $context['host'] ?? null,
+                    'timestamp' => $context['timestamp'] ?? null,
+                    'schema' => $context['schema'] ?? null,
+                    'qt' => $stat['qt'] ?? 0,
+                    'lt' => $stat['lt'] ?? 0,
+                    'rs' => $stat['rs'] ?? 0,
+                    're' => $stat['re'] ?? 0,
+                ]);
             }
 
             $i++;
@@ -379,19 +481,22 @@ class MyProfi
             $tmp =& $this->_nums;
         }
 
-        if (list($h, $n) = each($tmp)) {
-            if ($this->sort) {
-                $stat = $n;
-                $n = $this->_nums[$h];
-            }
-
-            if ($this->sample) {
-                return [$n, $this->_queries[$h], $this->_samples[$h], $stat];
-            } else {
-                return [$n, $this->_queries[$h], false, $stat];
-            }
-        } else {
+        $keys = array_keys($tmp);
+        if (!isset($keys[$this->_patternStatsIndex])) {
             return false;
+        }
+        $h = $keys[$this->_patternStatsIndex++];
+        $n = $tmp[$h];
+
+        if ($this->sort) {
+            $stat = $n;
+            $n = $this->_nums[$h];
+        }
+
+        if ($this->sample) {
+            return [$n, $this->_queries[$h], $this->_samples[$h], $stat];
+        } else {
+            return [$n, $this->_queries[$h], false, $stat];
         }
     }
 
@@ -401,6 +506,48 @@ class MyProfi
     public function total()
     {
         return $this->total;
+    }
+
+    /**
+     * Get all individual query executions (for dynamic mode)
+     *
+     * @return array
+     */
+    public function getExecutions(): array
+    {
+        return $this->_executions;
+    }
+
+    /**
+     * Get list of unique thread IDs from executions
+     *
+     * @return array
+     */
+    public function getUniqueThreads(): array
+    {
+        $threads = [];
+        foreach ($this->_executions as $exec) {
+            if ($exec['thread_id'] !== null) {
+                $threads[$exec['thread_id']] = true;
+            }
+        }
+        return array_keys($threads);
+    }
+
+    /**
+     * Get list of unique users from executions
+     *
+     * @return array
+     */
+    public function getUniqueUsers(): array
+    {
+        $users = [];
+        foreach ($this->_executions as $exec) {
+            if ($exec['user'] !== null) {
+                $users[$exec['user']] = true;
+            }
+        }
+        return array_keys($users);
     }
 
     /**

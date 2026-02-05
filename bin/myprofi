@@ -64,6 +64,12 @@ $file = '';
 $sample = false;
 $sort   = false;
 $html   = false;
+$dynamic = false;
+$sqliteFile = false;
+$thresholds = [
+    'qt_slow' => 1.0,
+    'qt_critical' => 5.0,
+];
 
 // the last argument always must be an input filename
 if (isset($argv[1])) {
@@ -124,6 +130,18 @@ while (null !== ($com = array_shift($argv))) {
             }
             $myprofi->sortby($sort);
             break;
+
+        case '-dynamic':
+            $dynamic = true;
+            $myprofi->dynamic(true);
+            $html = true;
+            break;
+
+        case '-sqlite':
+            if (null === ($sqliteFile = array_shift($argv))) {
+                (new \MyProfi\Helper())->doc('Error: must specify SQLite output filename');
+            }
+            break;
     }
 }
 if (!$myprofi->slow() && $sort) {
@@ -131,13 +149,44 @@ if (!$myprofi->slow() && $sort) {
     $myprofi->sortby(false);
 }
 
+if ($dynamic && !$myprofi->slow()) {
+    (new \MyProfi\Helper())->doc('Error: -dynamic requires -slow mode');
+}
+
+if ($sqliteFile && !$myprofi->slow()) {
+    (new \MyProfi\Helper())->doc('Error: -sqlite requires -slow mode');
+}
+
 $myprofi->setInputFile($file);
+
+if ($sqliteFile) {
+    $sqliteWriter = new \MyProfi\Writer\SqliteWriter($sqliteFile);
+    $sqliteWriter->setMetadata('source_file', $file);
+    $myprofi->setSqliteWriter($sqliteWriter);
+}
+
 $myprofi->processQueries();
+
+if ($sqliteFile) {
+    $myprofi->finalizeSqliteWriter();
+    fprintf(STDERR, "Exported %d queries to %s\n", $sqliteWriter->getInsertCount(), $sqliteFile);
+}
 
 $i = $myprofi->total();
 $j = 1;
 
-$tmpl = ($html ? new \MyProfi\Template\HtmlTemplate() : new \MyProfi\Template\PlainTemplate());
+if ($dynamic) {
+    $tmpl = new \MyProfi\Template\DynamicTemplate(
+        $myprofi->getExecutions(),
+        $myprofi->getUniqueThreads(),
+        $myprofi->getUniqueUsers(),
+        $thresholds
+    );
+} elseif ($html) {
+    $tmpl = new \MyProfi\Template\HtmlTemplate();
+} else {
+    $tmpl = new \MyProfi\Template\PlainTemplate();
+}
 
 $tmpl->miniheader();
 
@@ -149,7 +198,8 @@ $tmpl->minifooter($i);
 
 $tmpl->mainheader();
 
-while (list($num, $query, $smpl, $stats) = $myprofi->getPatternStats()) {
+while (($patternStat = $myprofi->getPatternStats()) !== false) {
+    list($num, $query, $smpl, $stats) = $patternStat;
     if ($sort) {
         $n = $stats[$sort];
         $tmpl->mainrow($j, $num, $n, $query, true, $smpl);

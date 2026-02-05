@@ -35,12 +35,20 @@ stands for "Query time", "Lock time", "Rows sent", "Rows executed".<br>
 Values taken from data provided by slow query log respectively.<br>
 Suffix after _ character tells MyProfi to take total, maximum or average calculated values.
 
+- `dynamic` Output interactive HTML with JavaScript filtering. **Requires `-slow` mode**.<br>
+Enables filtering by thread and user, timeline view per thread, and highlights slow queries
+(yellow >1s, red >5s).
+
+- `sqlite <FILENAME>` Export all query executions to SQLite database file. **Requires `-slow` mode**.<br>
+Creates a SQLite database with `query_executions` table containing all parsed queries with their
+metrics (query_time, lock_time, rows_sent, rows_examined) and context (thread_id, user, host, timestamp, schema).
+
 
 Example:
 
     php parser.php -csv -top 10 -type "select, update" general_log.csv
 
-MyProfi will work with php5.5 and newer.
+MyProfi requires PHP 8.2 or newer.
 
 Copyright (C)
 - 2006 camka at camka@users.sourceforge.net

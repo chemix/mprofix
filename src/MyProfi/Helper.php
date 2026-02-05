@@ -66,6 +66,14 @@ Options:
 	 values taken from data provided by slow query log respectively.
 	 Suffix after _ character tells MyProfi to take total, maximum or average
 	 calculated values.
+-dynamic
+	Output interactive HTML with JavaScript filtering.
+	Requires -slow mode. Enables filtering by thread and user,
+	timeline view per thread, and highlights slow queries
+	(yellow >1s, red >5s).
+-sqlite <FILENAME>
+	Export all query executions to SQLite database file.
+	Requires -slow mode.
 
 Example:
 	php parser.php -csv -top 10 -type "select, update" general_log.csv

@@ -2,46 +2,49 @@
 
 namespace MyProfiTests;
 
+use PHPUnit\Framework\TestCase;
+
 /**
  * Class MyProfiTest
  * @package MyProfiTests
  */
-class MyProfiTest extends \PHPUnit_Framework_TestCase
+class MyProfiTest extends TestCase
 {
     /** @var \MyProfi\MyProfi */
     private $myprofi;
 
-    public function setUp()
+    protected function setUp(): void
     {
         $this->myprofi = new \MyProfi\MyProfi();
         parent::setUp();
     }
 
-    /**
-     *
-     */
-    public function testCsVFilenameIsDetected()
+    private function getProtectedProperty(object $obj, string $prop): mixed
     {
-        $this->myprofi->setInputFile('foobar.csv');
-        self::assertAttributeEquals(true, 'csv', $this->myprofi);
-        self::assertAttributeEquals('foobar.csv', 'filename', $this->myprofi);
+        $ref = new \ReflectionClass($obj);
+        $p = $ref->getProperty($prop);
+        return $p->getValue($obj);
     }
 
-    /**
-     *
-     */
-    public function testNonCsvFilenameIsDetected()
+    public function testCsVFilenameIsDetected(): void
+    {
+        $this->myprofi->setInputFile('foobar.csv');
+        self::assertEquals(true, $this->getProtectedProperty($this->myprofi, 'csv'));
+        self::assertEquals('foobar.csv', $this->getProtectedProperty($this->myprofi, 'filename'));
+    }
+
+    public function testNonCsvFilenameIsDetected(): void
     {
         $this->myprofi->setInputFile('foobar.log');
-        self::assertAttributeEquals(false, 'csv', $this->myprofi);
-        self::assertAttributeEquals('foobar.log', 'filename', $this->myprofi);
+        self::assertEquals(false, $this->getProtectedProperty($this->myprofi, 'csv'));
+        self::assertEquals('foobar.log', $this->getProtectedProperty($this->myprofi, 'filename'));
     }
 
     /**
      * Actually these do not test a "unit", but the whole process
      * I am sure this could be done better, but for the moment [tm] it is ok
      */
-    private function setUpSimpleSlowYodaEventLog()
+    private function setUpSimpleSlowYodaEventLog(): void
     {
         $this->myprofi->setInputFile(__DIR__ . '/../logs/slow_yoda_event.log');
         $this->myprofi->slow(true);
@@ -52,14 +55,14 @@ class MyProfiTest extends \PHPUnit_Framework_TestCase
      * Actually these do not test a "unit", but the whole process
      * I am sure this could be done better, but for the moment [tm] it is ok
      */
-    private function setUpPerconaStyleShortLog()
+    private function setUpPerconaStyleShortLog(): void
     {
         $this->myprofi->setInputFile(__DIR__ . '/../logs/percona_style_short.log');
         $this->myprofi->slow(true);
         $this->myprofi->processQueries();
     }
 
-    public function testSimpleSlowYodaEventLogTotal()
+    public function testSimpleSlowYodaEventLogTotal(): void
     {
         $this->setUpSimpleSlowYodaEventLog();
 
@@ -67,7 +70,7 @@ class MyProfiTest extends \PHPUnit_Framework_TestCase
         self::assertEquals(2, $totalNumberOfEntries);
     }
 
-    public function testSimpleSlowYodaEventLogTypesStat()
+    public function testSimpleSlowYodaEventLogTypesStat(): void
     {
         $this->setUpSimpleSlowYodaEventLog();
 
@@ -79,7 +82,7 @@ class MyProfiTest extends \PHPUnit_Framework_TestCase
         }
     }
 
-    public function testSimpleSlowYodaEventLogNums()
+    public function testSimpleSlowYodaEventLogNums(): void
     {
         $this->setUpSimpleSlowYodaEventLog();
 
@@ -92,7 +95,7 @@ class MyProfiTest extends \PHPUnit_Framework_TestCase
         self::assertEquals($expectedNums, $patternNums);
     }
 
-    public function testSimpleSlowYodaEventLogQueries()
+    public function testSimpleSlowYodaEventLogQueries(): void
     {
         $this->setUpSimpleSlowYodaEventLog();
 
@@ -105,7 +108,7 @@ class MyProfiTest extends \PHPUnit_Framework_TestCase
         self::assertEquals($expectedQueries, $patternQueries);
     }
 
-    public function testPerconaStyleShortLogNums()
+    public function testPerconaStyleShortLogNums(): void
     {
         $this->setUpPerconaStyleShortLog();
 
@@ -117,7 +120,7 @@ class MyProfiTest extends \PHPUnit_Framework_TestCase
         self::assertEquals($expectedNums, $patternNums);
     }
 
-    public function testPerconaStyleShortLogQueries()
+    public function testPerconaStyleShortLogQueries(): void
     {
         $this->setUpPerconaStyleShortLog();
 

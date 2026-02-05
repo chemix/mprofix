@@ -2,14 +2,16 @@
 
 namespace MyProfiTests;
 
+use PHPUnit\Framework\TestCase;
+
 /**
  * Class HelperTest
  * @package MyProfiTests
  */
-class HelperTest extends \PHPUnit_Framework_TestCase
+class HelperTest extends TestCase
 {
 
-    public function testOutputsIndividualText()
+    public function testOutputsIndividualText(): void
     {
         $docFile = __DIR__ . '/../outputs/doc.txt';
 
@@ -20,7 +22,7 @@ class HelperTest extends \PHPUnit_Framework_TestCase
         $compare = file_get_contents($docFile);
 
         $mock = $this->getMockBuilder(\MyProfi\Helper::class)
-            ->setMethods(['output'])
+            ->onlyMethods(['output'])
             ->getMock();
 
         $mock->expects(self::once())
